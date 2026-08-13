@@ -1,4 +1,3 @@
-```markdown name=README.md
 # MedSafe — AI-driven Drug–Food Interaction Checker
 
 MedSafe is a Next.js + TypeScript frontend paired with a Python inference backend that helps detect and explain potential interactions between medications and foods. It's designed for researchers, clinicians, and developers building clinical decision-support prototypes or demos.
@@ -11,14 +10,15 @@ MedSafe is a Next.js + TypeScript frontend paired with a Python inference backen
 - Authentication integrations (Clerk is included in dependencies)
 
 ### Stack
-- Language(s): TypeScript (frontend), Python (backend)
-- Framework / runtime: Next.js (App Router, `app/` directory)
-- Notable libraries:
+- **Language(s):** TypeScript (frontend), Python (backend)
+- **Framework / runtime:** Next.js (App Router, `app/` directory)
+- **Notable libraries:**
   - Frontend: Next.js 14, React 18, Tailwind CSS, Clerk (auth), Zustand (state), Recharts (charts), axios (HTTP)
   - Backend: Python (requirements in `medsafe-backend/requirements.txt`) — inference model included as a .pth file
 
 ## How it's organized
 Top-level layout (important files/dirs only):
+
 ```
 medsafe-frontend/
   app/                    Next.js App Router pages and layouts (landing, dashboard, history)
@@ -123,9 +123,3 @@ This repository includes a LICENSE file at the project root. Refer to it for lic
 - How do I switch the frontend between SQLite and MongoDB (which files control that)? — look at `medsafe-frontend/lib/db-sqlite.ts`, `medsafe-frontend/lib/db-mongodb.ts`, and `medsafe-frontend/lib/store.ts`.
 - Where and how is the AI model loaded in the backend? — check `medsafe-backend/main.py` and the model file `medsafe-backend/medsafe_optimized_model.pth`.
 - What environment variables do I need to run the frontend and where are they listed? — see `medsafe-frontend/.env.example` and `medsafe-frontend/SETUP_GUIDE.md`.
-
----
-
-If you'd like, I can:
-- produce a ready-to-commit README.md file with the content above, or
-- extract and list the exact environment variables from `medsafe-frontend/.env.example` and include them inline in the README.
