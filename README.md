@@ -1,125 +1,267 @@
-# MedSafe — AI-driven Drug–Food Interaction Checker
+<div align="center">
 
-MedSafe is a Next.js + TypeScript frontend paired with a Python inference backend that helps detect and explain potential interactions between medications and foods. It's designed for researchers, clinicians, and developers building clinical decision-support prototypes or demos.
+# 🛡️ MedSafe AI — Drug–Food Interaction Prototype
 
-## Key features
-- Natural language and structured input for drug/food interaction checks (frontend UI components in `medsafe-frontend/components`)
-- Visual results and history views (recharts-based visualizations and a history page)
-- Local and remote storage options (SQLite and MongoDB support in the frontend library)
-- On-device / server-side AI inference via a Python model (model file present in `medsafe-backend/medsafe_optimized_model.pth`)
-- Authentication integrations (Clerk is included in dependencies)
+**A full-stack research prototype for exploring potential drug–food interactions with molecular and biomedical-text features.**
 
-### Stack
-- **Language(s):** TypeScript (frontend), Python (backend)
-- **Framework / runtime:** Next.js (App Router, `app/` directory)
-- **Notable libraries:**
-  - Frontend: Next.js 14, React 18, Tailwind CSS, Clerk (auth), Zustand (state), Recharts (charts), axios (HTTP)
-  - Backend: Python (requirements in `medsafe-backend/requirements.txt`) — inference model included as a .pth file
+[![Next.js](https://img.shields.io/badge/Next.js-14-000000?style=for-the-badge&logo=nextdotjs&logoColor=white)](https://nextjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.0.1-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![Hugging Face](https://img.shields.io/badge/Transformers-4.38.2-FFD21E?style=for-the-badge&logo=huggingface&logoColor=black)](https://huggingface.co/docs/transformers)
+[![SQLite](https://img.shields.io/badge/SQLite-Local%20History-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://www.sqlite.org/)
 
-## How it's organized
-Top-level layout (important files/dirs only):
+[Quick Start](#-quick-start) · [Architecture](#-system-architecture) · [Model](#-model-and-algorithm) · [API](#-inference-api) · [Setup Guide](SETUP_GUIDE.md) · [Limitations](#-important-limitations)
 
+</div>
+
+---
+
+> [!WARNING]
+> **Not for medical use.** MedSafe is an experimental software prototype, not a medical device or validated clinical decision-support system. Its predictions may be inaccurate or based on placeholder input data. Do not use it to make medication, diet, diagnosis, or treatment decisions. Consult a qualified healthcare professional.
+
+## 📌 Overview
+
+MedSafe combines a **Next.js and TypeScript web application** with a **FastAPI and PyTorch inference service**. The intended workflow takes a drug and food, represents their molecular structures as SMILES, combines those inputs with biomedical text, and predicts one of three classes: **Major**, **Moderate**, or **Safe**.
+
+The repository includes a pretrained-feature inference pipeline and model checkpoint. However, the current frontend uses **hard-coded mock SMILES mappings and randomly selected mock clinical text**. It does not currently perform live PubMed, FooDB, or PubChem lookups. Treat the application as a prototype demonstration, not a source of verified interaction information.
+
+## ✨ Features
+
+| Area | Current implementation |
+|---|---|
+| Interaction form | Drug and food name input in the dashboard |
+| Molecular inputs | Local mock name-to-SMILES mappings; unknown names fall back to a generic benzene SMILES |
+| Clinical text | Mock text selected from preset templates |
+| Prediction | FastAPI endpoint backed by frozen Transformer encoders and a trained PyTorch MLP |
+| Results | Severity label, model confidence, and class probability chart |
+| Authentication | Clerk dependency and middleware are configured in the frontend |
+| History | Clerk-protected Next.js history routes backed by SQLite |
+| Alternate storage | MongoDB adapter exists, but the current history routes use SQLite directly |
+| Theme | Light/dark mode with local browser preference |
+
+## 🏗️ System Architecture
+
+```mermaid
+flowchart LR
+    U[User] --> UI[Next.js App Router UI]
+    UI --> FORM[Drug + food names]
+    FORM --> CONV[Frontend SMILES converter]
+    CONV -->|Current: local mock mappings| SMILES[Drug SMILES + food SMILES]
+    CONV -->|Current: mock templates| TEXT[Clinical text]
+    SMILES --> API[FastAPI POST /api/predict]
+    TEXT --> API
+
+    subgraph PY[Python inference service]
+        API --> M1[MoLFormer-XL tokenizer + encoder]
+        API --> M2[PubMedBERT tokenizer + encoder]
+        M1 --> E1[Drug embedding]
+        M1 --> E2[Food embedding]
+        M2 --> E3[Clinical-text embedding]
+        E1 --> CAT[Concatenate 3 × 768 = 2304 features]
+        E2 --> CAT
+        E3 --> CAT
+        CAT --> MLP[MedSafe MLP classifier]
+        MLP --> SOFT[Softmax: Major / Moderate / Safe]
+    end
+
+    SOFT --> RESULT[Prediction + probabilities]
+    RESULT --> UI
+    UI --> HIST[Next.js history API]
+    HIST --> SQLITE[(SQLite)]
+    HIST -. alternate adapter exists .-> MONGO[(MongoDB)]
+    AUTH[Clerk middleware/auth] -. protects app routes .-> UI
 ```
-medsafe-frontend/
-  app/                    Next.js App Router pages and layouts (landing, dashboard, history)
-  components/             Reusable UI & app components (interaction-checker, results-card, landing-page)
-  components/ui/          Small UI primitives (button, card, input)
-  lib/                    Frontend utilities: api-client, DB adapters (SQLite/Mongo), SMILES converter, store
-  types/                  TypeScript types
-  package.json            Frontend scripts & dependencies
-  .env.example            Example env file for frontend
-  SETUP_GUIDE.md          Setup instructions for frontend
-  PROJECT_SUMMARY.md      Project summary and notes
-  setup.sh / setup.bat    Convenience setup scripts
-medsafe-backend/
-  main.py                 Python inference API entrypoint
-  requirements.txt        Python dependencies
-  medsafe_optimized_model.pth   Trained model used by the backend
-  readme.md               Backend-specific notes and API info
-LICENSE
-.gitignore
-.gitattributes
+
+<details open>
+<summary><b>🔬 Inference flow, step by step</b></summary>
+
+1. The dashboard accepts a drug name and a food name.
+2. The frontend converts both names using local mock dictionaries and constructs mock clinical text.
+3. The client sends `drug_smiles`, `food_smiles`, and `clinical_text` to `POST /api/predict`.
+4. MoLFormer-XL encodes the drug and food SMILES separately.
+5. PubMedBERT encodes the clinical text.
+6. The three 768-dimensional pooled outputs are concatenated into a 2,304-dimensional vector.
+7. A trained MLP produces three logits. Softmax probabilities are mapped to `Major`, `Moderate`, and `Safe`.
+8. The frontend displays the predicted class, confidence, and probability breakdown.
+
+</details>
+
+## 🧠 Model and Algorithm
+
+The inference implementation in `medsafe-backend/main.py` defines `MedSafeMLP` and loads its weights from `medsafe_optimized_model.pth`.
+
+### Feature encoders
+
+| Input | Encoder | Representation |
+|---|---|---:|
+| Drug SMILES | `ibm/MoLFormer-XL-both-10pct` | 768-dimensional pooled output |
+| Food SMILES | `ibm/MoLFormer-XL-both-10pct` | 768-dimensional pooled output |
+| Clinical text | `microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext` | 768-dimensional pooled output |
+| Concatenated features | `torch.cat([drug, food, text])` | 2,304 dimensions |
+
+The backend tokenizes SMILES with a maximum length of 128 and clinical text with a maximum length of 256. It uses each encoder's `pooler_output`.
+
+### Classifier
+
+```text
+2,304 input features
+       │
+Linear(2304 → 1024) → BatchNorm → LeakyReLU(0.1) → Dropout(0.4)
+       │
+Linear(1024 → 256) → BatchNorm → LeakyReLU(0.1) → Dropout(0.3)
+       │
+Linear(256 → 3)
+       │
+Softmax → Major / Moderate / Safe
 ```
 
-How it fits together:
-- The Next.js frontend (in `medsafe-frontend/`) renders the UI and calls the inference API for interaction checks through the library client (`lib/api-client.ts`). The `app/` folder is the source of the pages (landing, dashboard, history). UI logic and state live in `components/` and `lib/store.ts`.
-- The Python backend (under `medsafe-backend/`) hosts the inference model and exposes endpoints the frontend consumes. The model file (`medsafe_optimized_model.pth`) is bundled here; `main.py` is the runtime entrypoint for the AI inference service.
-- The frontend has adapters for either a local SQLite database or MongoDB (`lib/db-sqlite.ts`, `lib/db-mongodb.ts`) so you can run with a file DB or a remote DB.
+The inference class mapping is:
 
-## How to run it
+| Class index | Label |
+|---:|---|
+| 0 | Major |
+| 1 | Moderate |
+| 2 | Safe |
 
-Prerequisites
-- Node 18+ / npm or pnpm for the frontend
-- Python 3.10+ and virtualenv for the backend
-- If using MongoDB, a running MongoDB instance or Atlas URI
+No verified benchmark report or model-card metrics are included in this repository. Do not infer model accuracy, clinical validity, or safety from the checkpoint being present.
 
-Frontend (quick start)
-1. cd into the frontend:
-   ```
-   cd medsafe-frontend
-   ```
-2. Install:
-   ```
-   npm install
-   ```
-3. Copy environment variables:
-   - Copy `.env.example` to `.env.local` and fill in the values required (see `.env.example`).
-4. Start dev server:
-   ```
-   npm run dev
-   ```
-Common frontend scripts (from `package.json`):
-- npm run dev         — start Next.js in development
-- npm run build       — build for production
-- npm run start       — start built app
-- npm run db:init     — run DB init script (node scripts/db-init.js)
-- npm run db:seed     — run DB seed script (node scripts/db-seed.js)
+## 🚀 Quick Start
 
-Backend (inference API)
-1. cd into backend:
-   ```
-   cd medsafe-backend
-   ```
-2. Create venv and install:
-   ```
-   python -m venv .venv
-   source .venv/bin/activate   # or `.venv\Scripts\activate` on Windows
-   pip install -r requirements.txt
-   ```
-3. Run the service:
-   ```
-   python main.py
-   ```
-   (See `medsafe-backend/readme.md` for any framework-specific instructions or alternate run commands if the backend uses an ASGI server.)
+See the cross-platform [Setup Guide](SETUP_GUIDE.md) for complete instructions.
 
-Notes:
-- The model file `medsafe_optimized_model.pth` is large and included under `medsafe-backend/` — loading it can require sufficient memory and CPU/GPU depending on how inference is implemented.
-- See `medsafe-frontend/SETUP_GUIDE.md` for step-by-step frontend setup and troubleshooting.
+### Start the backend
 
-## Environment & configuration
-- The repository provides `medsafe-frontend/.env.example` — copy it and fill in values such as API endpoints, database URIs, and any auth keys required for Clerk or other services.
-- Frontend database options: see `lib/db-sqlite.ts` and `lib/db-mongodb.ts`. Choose SQLite for local dev or MongoDB for remote persistence.
+```bash
+cd medsafe-backend
+python -m venv .venv
 
-## Development notes & pointers
-- Frontend uses the Next.js App Router (the `app/` folder) and TypeScript. Components are in `components/` with small UI primitives in `components/ui/`.
-- The SMILES converter and any chemistry-specific parsing logic are in `lib/smiles-converter.ts`.
-- The frontend exposes convenience scripts for DB initialization and seeding (`scripts/db-init.js`, `scripts/db-seed.js` invoked via `package.json`).
-- Authentication: Clerk integration is declared in dependencies. Check `medsafe-frontend` for Clerk setup (auth-protected routes/middleware).
-- If you plan to change the DB backend, look at `lib/store.ts` and the DB adapter files for how the app switches adapters.
+# Linux / macOS
+source .venv/bin/activate
 
-## Contributing
-- Read the project files `medsafe-frontend/PROJECT_SUMMARY.md` and `medsafe-backend/readme.md` before opening issues or PRs — they contain design and API notes.
-- Keep changes small and focused. For frontend changes, run `npm run lint` and ensure TypeScript types pass.
-- If adding or updating the model, document its provenance and license, and include tests or a smoke-check script for inference.
+# Windows PowerShell
+# .\.venv\Scripts\Activate.ps1
 
-## License
-This repository includes a LICENSE file at the project root. Refer to it for license terms.
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python -m uvicorn main:app --host 127.0.0.1 --port 8001
+```
 
-## Acknowledgements
-- Built with Next.js, Tailwind CSS, and multiple OSS libraries (see `medsafe-frontend/package.json` for a full list).
-- Model and inference implementation live in `medsafe-backend/`.
+The first startup downloads the pretrained Transformer encoders from Hugging Face. Start the command from `medsafe-backend`; the checkpoint is loaded using a path relative to the backend working directory.
 
-## Try asking
-- How do I switch the frontend between SQLite and MongoDB (which files control that)? — look at `medsafe-frontend/lib/db-sqlite.ts`, `medsafe-frontend/lib/db-mongodb.ts`, and `medsafe-frontend/lib/store.ts`.
-- Where and how is the AI model loaded in the backend? — check `medsafe-backend/main.py` and the model file `medsafe-backend/medsafe_optimized_model.pth`.
-- What environment variables do I need to run the frontend and where are they listed? — see `medsafe-frontend/.env.example` and `medsafe-frontend/SETUP_GUIDE.md`.
+### Start the frontend
+
+In another terminal:
+
+```bash
+cd medsafe-frontend
+npm install
+cp .env.example .env.local
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000). Set Clerk credentials in `.env.local` for authentication. The frontend defaults to the backend at `http://127.0.0.1:8001`.
+
+## 🧪 Inference API
+
+FastAPI provides interactive OpenAPI documentation at:
+
+- Swagger UI: `http://127.0.0.1:8001/docs`
+- ReDoc: `http://127.0.0.1:8001/redoc`
+- OpenAPI JSON: `http://127.0.0.1:8001/openapi.json`
+
+### `POST /api/predict`
+
+Request:
+
+```json
+{
+  "drug_smiles": "CC(=O)NC1=CC=C(O)C=C1",
+  "food_smiles": "C1=CC(=C(C=C1)O)O",
+  "clinical_text": "Example clinical context supplied to the model"
+}
+```
+
+Response shape:
+
+```json
+{
+  "status": "success",
+  "source": "ml",
+  "prediction": {
+    "severity_score": 2,
+    "severity_label": "Safe",
+    "confidence": "71.56%",
+    "raw_probabilities": {
+      "Major": 0.1702,
+      "Moderate": 0.1142,
+      "Safe": 0.7156
+    }
+  }
+}
+```
+
+The values above illustrate the response format only; they are not a validated result for the example inputs.
+
+## 🗂️ Repository Structure
+
+```text
+Medsafe_interaction_checker/
+├── README.md
+├── SETUP_GUIDE.md
+├── LICENSE
+├── medsafe-backend/
+│   ├── main.py                         # FastAPI API, encoders, MLP inference
+│   ├── README.md                       # Backend and Swagger/API guide
+│   ├── requirements.txt
+│   └── medsafe_optimized_model.pth     # Trained classifier weights
+└── medsafe-frontend/
+    ├── app/                            # Next.js routes and API handlers
+    ├── components/                     # Interaction form, results, theme, UI
+    ├── lib/
+    │   ├── api-client.ts               # Backend HTTP client
+    │   ├── smiles-converter.ts         # Current mock converters/text
+    │   ├── db-sqlite.ts                # SQLite history adapter
+    │   ├── db-mongodb.ts               # MongoDB adapter (not wired to routes)
+    │   └── store.ts                    # Zustand UI state
+    ├── types/
+    ├── .env.example
+    └── package.json
+```
+
+## 🔐 Configuration and Data
+
+Frontend environment template: `medsafe-frontend/.env.example`.
+
+| Variable | Use in current code |
+|---|---|
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk frontend configuration |
+| `CLERK_SECRET_KEY` | Clerk server configuration |
+| `NEXT_PUBLIC_API_URL` | Backend base URL; defaults to `http://127.0.0.1:8001` |
+| `MONGODB_URI` | Used by the MongoDB adapter, which is not currently connected to history routes |
+| `DATABASE_URL` | Present in the template; SQLite adapter currently constructs its own local path |
+| `PUBMED_API_KEY` | Present in the template; current SMILES/clinical-text converter does not use it |
+
+The active history endpoints import SQLite operations directly. The database is located under the frontend working directory at `data/medsafe.db`; ensure that directory exists before making history requests.
+
+## ⚠️ Important Limitations
+
+- **Prototype only:** Predictions are not validated for clinical use and must not guide patient care.
+- **Placeholder frontend data:** Drug/food name conversion is backed by hard-coded mock maps. Unknown names use a generic fallback SMILES.
+- **Mock clinical context:** The frontend selects a preset clinical-text template at random; it does not currently query PubMed.
+- **No reported evaluation:** This repository does not include verified metrics, external validation, or a clinical model card.
+- **Database configuration gap:** SQLite is wired to the history routes; the MongoDB adapter is present but is not selected by those routes.
+- **Security before deployment:** The backend currently allows all CORS origins. Restrict CORS, add authentication/authorization for inference, validate inputs, and review data protection before exposing it beyond local development.
+- **Third-party model downloads:** Backend startup requires internet access to download the configured Hugging Face encoders unless they are already cached.
+
+## 📚 Documentation
+
+- [Setup Guide](SETUP_GUIDE.md) — prerequisites, environment setup, startup, and troubleshooting
+- [Backend README](medsafe-backend/README.md) — model loading and inference API details
+- [FastAPI Swagger UI](http://127.0.0.1:8001/docs) — available when the backend is running
+- [MedSafe frontend](medsafe-frontend/) — Next.js application source
+
+## 📄 License
+
+This repository includes an [Apache License 2.0](LICENSE). The model checkpoint and third-party pretrained models may have separate terms; verify their provenance and licenses independently.
