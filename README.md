@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🛡️ MedSafe AI — Drug–Food Interaction Prototype
+#  MedSafe AI — Drug–Food Interaction Prototype
 
 **A full-stack research prototype for exploring potential drug–food interactions with molecular and biomedical-text features.**
 
